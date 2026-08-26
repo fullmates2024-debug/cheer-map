@@ -78,6 +78,54 @@
     color: #111; font-size: 13px; font-weight: 700; padding: 1px 7px; border-radius: 8px; }
   .ring-label::before { display: none; }
 
+  /* ランキング */
+  .rank-btn {
+    position: absolute; z-index: 1000; bottom: 26px; left: 12px;
+    border: none; border-radius: 22px; padding: 11px 18px;
+    background: #fff; color: #333; font-size: 14px; font-weight: 700;
+    box-shadow: 0 2px 10px rgba(0,0,0,.3); cursor: pointer;
+  }
+  .rank-btn:hover { background: #fdeef4; }
+  .rank-panel {
+    position: absolute; z-index: 1200; top: 0; right: 0; bottom: 0;
+    width: min(420px, 100%); background: #fff;
+    box-shadow: -2px 0 16px rgba(0,0,0,.3);
+    display: none; flex-direction: column;
+  }
+  .rank-panel.open { display: flex; }
+  .rank-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 16px 8px;
+  }
+  .rank-head h2 { margin: 0; font-size: 16px; }
+  .rank-close {
+    width: 34px; height: 34px; border: none; border-radius: 50%;
+    background: #eee; color: #555; font-size: 16px; cursor: pointer;
+  }
+  .rank-tabs { display: flex; gap: 6px; padding: 0 16px 10px; }
+  .rank-tabs button {
+    flex: 1; padding: 8px 0; border: 1.5px solid #ddd; border-radius: 18px;
+    background: #fff; color: #555; font-size: 13px; font-weight: 700; cursor: pointer;
+  }
+  .rank-tabs button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .rank-list { flex: 1; overflow-y: auto; border-top: 1px solid #eee; }
+  .rank-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 16px; border-bottom: 1px solid #f2f2f2; cursor: pointer;
+  }
+  .rank-row:hover { background: #fdeef4; }
+  .rank-no {
+    width: 34px; text-align: right; font-size: 15px; font-weight: 800; color: #888;
+    flex-shrink: 0;
+  }
+  .rank-row.top3 .rank-no { font-size: 18px; color: #111; }
+  .rank-nm { flex: 1; min-width: 0; }
+  .rank-nm .nm { font-size: 14px; font-weight: 600; }
+  .rank-nm .sub { font-size: 11px; color: #999; }
+  .rank-st { font-size: 16px; font-weight: 800; color: var(--accent); white-space: nowrap; }
+  .rank-st small { font-size: 11px; color: #999; font-weight: 400; }
+  .rank-note { padding: 8px 16px; font-size: 10.5px; color: #999; border-top: 1px solid #eee; }
+
   /* 出典 */
   .leaflet-control-attribution { font-size: 9px; }
 </style>
@@ -90,6 +138,21 @@
   </form>
   <button id="clearBtn" class="clear-btn" title="クリア">✕</button>
   <div id="results" class="results"></div>
+</div>
+
+<button id="rankBtn" class="rank-btn">📋 人数ランキング</button>
+<div id="rankPanel" class="rank-panel">
+  <div class="rank-head">
+    <h2>児童数ランキング</h2>
+    <button id="rankClose" class="rank-close" title="閉じる">✕</button>
+  </div>
+  <div class="rank-tabs">
+    <button data-tab="all" class="active">全体</button>
+    <button data-tab="吹田市">吹田市</button>
+    <button data-tab="豊中市">豊中市</button>
+  </div>
+  <div id="rankList" class="rank-list"></div>
+  <div id="rankNote" class="rank-note"></div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -197,6 +260,49 @@
       map.flyToBounds(b.pad(0.05), { duration: 0.7 });
     }
   }
+
+  // ---- 児童数ランキング ----
+  const rankPanel = document.getElementById('rankPanel');
+  const rankListEl = document.getElementById('rankList');
+  const rankNoteEl = document.getElementById('rankNote');
+  let rankTab = 'all';
+
+  function renderRank() {
+    const rows = SCHOOLS
+      .filter(s => rankTab === 'all' || s.city === rankTab)
+      .slice().sort((a, b) => (b.students || 0) - (a.students || 0));
+    rankListEl.innerHTML = rows.map((s, i) => {
+      const cls = CITY_CLS[s.city];
+      return '<div class="rank-row' + (i < 3 ? ' top3' : '') + '" data-name="' + s.name + '">' +
+        '<div class="rank-no">' + (i + 1) + '</div>' +
+        '<div class="rank-nm"><div class="nm"><span class="badge ' + cls + '">' + s.city + '</span>' + s.short + '</div>' +
+        '<div class="sub">' + s.address + '</div></div>' +
+        '<div class="rank-st">' + (s.students != null ? s.students.toLocaleString() : '—') + ' <small>人</small></div></div>';
+    }).join('');
+    rankNoteEl.textContent = '児童数: 吹田市＝' + DATA.meta.suita.asOf + '／豊中市＝' + DATA.meta.toyonaka.asOf +
+      '。タップすると地図でその学校を表示します。';
+  }
+
+  document.getElementById('rankBtn').addEventListener('click', () => {
+    renderRank();
+    rankPanel.classList.add('open');
+  });
+  document.getElementById('rankClose').addEventListener('click', () => rankPanel.classList.remove('open'));
+  document.querySelectorAll('.rank-tabs button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      rankTab = btn.dataset.tab;
+      document.querySelectorAll('.rank-tabs button').forEach(b => b.classList.toggle('active', b === btn));
+      renderRank();
+    });
+  });
+  rankListEl.addEventListener('click', e => {
+    const row = e.target.closest('.rank-row');
+    if (!row) return;
+    const s = SCHOOLS.find(x => x.name === row.dataset.name);
+    if (!s) return;
+    rankPanel.classList.remove('open');
+    select(s, s._marker, true);
+  });
 
   // ---- 検索 ----
   const input = document.getElementById('q');

@@ -13,6 +13,27 @@
 - 更新方法: ファイルを編集 → `git add -A && git commit && git push` で1〜2分後に自動反映
 - gh CLIは `~/.local/bin/gh`（fullmates2024-debugでログイン済み・keyring保存）
 
+## MacBook Proでの編集・push設定（初回のみ・Claudeへ：この手順で設定して）
+このフォルダはiCloudでMBPにも同期済み（`~/Library/Mobile Documents/com~apple~CloudDocs/アプリ開発/チア校区マップ`）。
+.gitも同期されるので、MBP側で必要なのはGitHub認証だけ。
+
+1. gh CLIを導入（brewがあれば `brew install gh` でも可）:
+   ```
+   ARCH=$(uname -m | sed 's/x86_64/amd64/;s/arm64/arm64/')
+   curl -sL -o /tmp/gh.zip "https://github.com/cli/cli/releases/download/v2.98.0/gh_2.98.0_macOS_${ARCH}.zip"
+   cd /tmp && unzip -q -o gh.zip && mkdir -p ~/.local/bin && cp gh_2.98.0_macOS_${ARCH}/bin/gh ~/.local/bin/gh
+   ```
+2. `~/.local/bin/gh auth login --hostname github.com --git-protocol https --web` を実行
+   → 表示される8桁コードを https://github.com/login/device で入力（アカウントは fullmates2024-debug）
+   → メールの確認コード（fullmates2024@gmail.com宛）を求められたら入力
+3. `~/.local/bin/gh auth setup-git` （git pushの認証をghに委任）
+4. 動作確認: このフォルダで `git push origin main`（Everything up-to-dateならOK）
+
+### 両Mac運用の注意
+- **同じタイミングで両方のMacから編集・コミットしない**（iCloud同期のズレで.gitが壊れる恐れ）
+- 相手のMacで直後に作業していた場合は、iCloud同期が落ち着くのを数分待ってから作業する
+- push すれば公開サイトに自動反映（1〜2分）。iCloud同期とGitHubは独立に動く
+
 ## 機能
 - 72校のピン（吹田35=青、豊中37=赤）
 - ピンタップ／検索選択で：学校名・児童数・住所のポップアップ＋校区ポリゴン＋500m/1km/1.5kmの同心円

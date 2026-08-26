@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>チア校区マップ｜吹田・豊中</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root {
+    --accent: #e5548a;
+    --suita: #1e78d2;
+    --toyonaka: #e0506e;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif; }
+  #map { position: absolute; inset: 0; }
+
+  /* 検索バー */
+  .searchbox {
+    position: absolute; z-index: 1000;
+    top: 12px; left: 50%; transform: translateX(-50%);
+    width: min(440px, calc(100% - 24px));
+  }
+  .searchbox input {
+    width: 100%; padding: 12px 42px 12px 16px;
+    border: none; border-radius: 24px;
+    font-size: 16px; outline: none;
+    background: #fff; box-shadow: 0 2px 12px rgba(0,0,0,.25);
+  }
+  .searchbox input:focus { box-shadow: 0 2px 12px rgba(229,84,138,.5); }
+  .searchbox .clear-btn {
+    position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+    width: 30px; height: 30px; border: none; border-radius: 50%;
+    background: #eee; color: #666; font-size: 15px; cursor: pointer; display: none;
+  }
+  .results {
+    margin-top: 6px; background: #fff; border-radius: 12px;
+    box-shadow: 0 4px 16px rgba(0,0,0,.25);
+    max-height: 45vh; overflow-y: auto; display: none;
+  }
+  .results .item {
+    display: flex; justify-content: space-between; align-items: center; gap: 8px;
+    padding: 10px 14px; cursor: pointer; border-bottom: 1px solid #f2f2f2;
+  }
+  .results .item:last-child { border-bottom: none; }
+  .results .item:hover, .results .item.active { background: #fdeef4; }
+  .results .nm { font-size: 14px; font-weight: 600; }
+  .results .sub { font-size: 11px; color: #888; }
+  .results .cnt { font-size: 13px; color: var(--accent); font-weight: 700; white-space: nowrap; }
+  .results .none { padding: 12px 14px; font-size: 13px; color: #888; }
+
+  /* 市バッジ */
+  .badge { display: inline-block; font-size: 10px; font-weight: 700; color: #fff;
+    border-radius: 8px; padding: 1px 7px; margin-right: 6px; vertical-align: 1px; }
+  .badge.suita { background: var(--suita); }
+  .badge.toyonaka { background: var(--toyonaka); }
+
+  /* ピン */
+  .pin { position: relative; }
+  .pin .dot {
+    width: 100%; height: 100%; border-radius: 50% 50% 50% 0;
+    transform: rotate(-45deg); border: 2px solid #fff;
+    box-shadow: 0 1px 4px rgba(0,0,0,.4);
+  }
+  .pin.suita .dot { background: var(--suita); }
+  .pin.toyonaka .dot { background: var(--toyonaka); }
+  .pin.selected .dot { background: var(--accent); outline: 3px solid rgba(229,84,138,.35); }
+
+  /* ポップアップ */
+  .leaflet-popup-content { margin: 14px 18px; line-height: 1.5; }
+  .pp-name { font-size: 15px; font-weight: 700; margin-bottom: 2px; }
+  .pp-students { font-size: 13px; margin: 4px 0; }
+  .pp-students b { font-size: 22px; color: var(--accent); }
+  .pp-note { font-size: 10.5px; color: #999; }
+
+  /* 円ラベル */
+  .ring-label { background: #fff; border: 1.5px solid #111; box-shadow: 0 1px 3px rgba(0,0,0,.4);
+    color: #111; font-size: 13px; font-weight: 700; padding: 1px 7px; border-radius: 8px; }
+  .ring-label::before { display: none; }
+
+  /* 出典 */
+  .leaflet-control-attribution { font-size: 9px; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div class="searchbox">
+  <form id="searchForm" action="." onsubmit="return false">
+    <input id="q" type="search" placeholder="小学校名で検索（例：やまだ／山田）" autocomplete="off" enterkeyhint="search">
+  </form>
+  <button id="clearBtn" class="clear-btn" title="クリア">✕</button>
+  <div id="results" class="results"></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="data/schools.js"></script>
+<script>
+(function () {
+  const DATA = window.SCHOOL_DATA;
+  const SCHOOLS = DATA.schools;
+  const CITY_CLS = { '吹田市': 'suita', '豊中市': 'toyonaka' };
+  const ASOF = { '吹田市': DATA.meta.suita.asOf, '豊中市': DATA.meta.toyonaka.asOf };
+
+  const map = L.map('map', { zoomControl: false });
+  window._map = map;
+  L.control.zoom({ position: 'bottomright' }).addTo(map);
+  const baseOsm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+  }).addTo(map);
+  const basePhoto = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg', {
+    maxZoom: 18,
+    attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html">地理院タイル</a>（全国最新写真）'
+  });
+  L.control.layers({ '地図': baseOsm, '航空写真': basePhoto }, null,
+    { position: 'topright', collapsed: false }).addTo(map);
+  map.attributionControl.addAttribution(
+    '校区・学校位置: <a href="https://nlftp.mlit.go.jp/ksj/">国土数値情報</a>（A27・P29）を加工｜児童数: 吹田市統計書・豊中市教委資料');
+
+  // 全校が入る範囲で初期表示
+  const allBounds = L.latLngBounds(SCHOOLS.map(s => [s.point[1], s.point[0]]));
+  map.setView([34.78, 135.49], 12);
+  // 環境によってはコンテナのサイズ確定がloadより後になるため、サイズ確定を監視して初回フィットする
+  let fitted = false;
+  new ResizeObserver(() => {
+    map.invalidateSize();
+    if (!fitted && map.getSize().x > 0) {
+      fitted = true;
+      map.fitBounds(allBounds.pad(0.05));
+    }
+  }).observe(document.getElementById('map'));
+
+  // 選択時のオーバーレイ
+  const overlay = L.layerGroup().addTo(map);
+  let selectedMarker = null;
+
+  function makeIcon(s, selected) {
+    const cls = 'pin ' + CITY_CLS[s.city] + (selected ? ' selected' : '');
+    return L.divIcon({
+      className: '',
+      html: '<div class="' + cls + '" style="width:26px;height:26px"><div class="dot"></div></div>',
+      iconSize: [26, 26], iconAnchor: [13, 24], popupAnchor: [0, -24]
+    });
+  }
+
+  const markers = SCHOOLS.map(s => {
+    const m = L.marker([s.point[1], s.point[0]], { icon: makeIcon(s, false), title: s.short });
+    m.bindPopup(popupHtml(s), { maxWidth: 280 });
+    m.on('click', () => select(s, m, false));
+    m.addTo(map);
+    s._marker = m;
+    return m;
+  });
+
+  function popupHtml(s) {
+    const cls = CITY_CLS[s.city];
+    const st = s.students != null ? s.students.toLocaleString() : '不明';
+    return '<div class="pp-name"><span class="badge ' + cls + '">' + s.city + '</span>' + s.short + '</div>' +
+      '<div class="pp-students">児童数 <b>' + st + '</b> 人</div>' +
+      '<div class="pp-note">' + ASOF[s.city] + '｜' + s.address + '<br>円は学校から 500m / 1km / 1.5km</div>';
+  }
+
+  function select(s, marker, fly) {
+    overlay.clearLayers();
+    if (selectedMarker) selectedMarker.setIcon(makeIcon(selectedMarker._school, false));
+    marker._school = s;
+    marker.setIcon(makeIcon(s, true));
+    selectedMarker = marker;
+
+    // 校区ポリゴン: 白フチ＋黒線＋黄色の薄塗り（地図でも航空写真でも見えるよう明度差で描く）
+    const gj = { type: 'Feature', geometry: s.polygon };
+    L.geoJSON(gj, { style: { color: '#ffffff', weight: 8, fill: false, opacity: 0.9 } }).addTo(overlay);
+    const poly = L.geoJSON(gj, {
+      style: { color: '#111111', weight: 2.5, fillColor: '#ffe600', fillOpacity: 0.22 }
+    }).addTo(overlay);
+
+    // 同心円 500m / 1000m / 1500m
+    const center = [s.point[1], s.point[0]];
+    [[500, '500m'], [1000, '1km'], [1500, '1.5km']].forEach(([r, label]) => {
+      L.circle(center, {
+        radius: r, color: '#ffffff', weight: 5, opacity: 0.9,
+        fill: false, interactive: false
+      }).addTo(overlay);
+      L.circle(center, {
+        radius: r, color: '#111111', weight: 2, dashArray: '7 7',
+        fill: false, interactive: false
+      }).addTo(overlay);
+      L.tooltip({ permanent: true, direction: 'top', className: 'ring-label', offset: [0, 0] })
+        .setLatLng([center[0] + r / 111320, center[1]])
+        .setContent(label)
+        .addTo(overlay);
+    });
+
+    if (fly) {
+      const b = poly.getBounds().extend(L.latLng(center).toBounds(3000));
+      map.once('moveend', () => marker.openPopup());
+      map.flyToBounds(b.pad(0.05), { duration: 0.7 });
+    }
+  }
+
+  // ---- 検索 ----
+  const input = document.getElementById('q');
+  const resultsEl = document.getElementById('results');
+  const clearBtn = document.getElementById('clearBtn');
+  let activeIdx = -1, currentHits = [];
+
+  const kata2hira = str => str.replace(/[ァ-ヶ]/g,
+    ch => String.fromCharCode(ch.charCodeAt(0) - 0x60));
+  const norm = str => kata2hira(String(str || '').trim().toLowerCase());
+
+  function search(qRaw) {
+    const q = norm(qRaw);
+    if (!q) return [];
+    return SCHOOLS.filter(s =>
+      s.name.includes(qRaw.trim()) || s.short.includes(qRaw.trim()) ||
+      norm(s.yomi).includes(q)
+    );
+  }
+
+  // 入力欄そのものは絶対に再描画しない（IME変換を守る）。結果リストだけ更新する
+  function renderResults() {
+    const q = input.value;
+    clearBtn.style.display = q ? 'block' : 'none';
+    if (!q.trim()) { resultsEl.style.display = 'none'; resultsEl.innerHTML = ''; currentHits = []; return; }
+    currentHits = search(q);
+    activeIdx = -1;
+    if (!currentHits.length) {
+      resultsEl.innerHTML = '<div class="none">該当する小学校がありません</div>';
+      resultsEl.style.display = 'block';
+      return;
+    }
+    resultsEl.innerHTML = currentHits.map((s, i) => {
+      const cls = CITY_CLS[s.city];
+      return '<div class="item" data-i="' + i + '">' +
+        '<div><div class="nm"><span class="badge ' + cls + '">' + s.city + '</span>' + s.short + '</div>' +
+        '<div class="sub">' + (s.yomi ? s.yomi + '｜' : '') + s.address + '</div></div>' +
+        '<div class="cnt">' + (s.students != null ? s.students.toLocaleString() + '人' : '') + '</div></div>';
+    }).join('');
+    resultsEl.style.display = 'block';
+  }
+
+  function choose(i) {
+    const s = currentHits[i];
+    if (!s) return;
+    resultsEl.style.display = 'none';
+    input.blur();
+    select(s, s._marker, true);
+  }
+
+  document.getElementById('searchForm').addEventListener('submit', e => {
+    e.preventDefault();
+    if (currentHits.length) choose(activeIdx >= 0 ? activeIdx : 0);
+  });
+  input.addEventListener('input', renderResults);
+  input.addEventListener('focus', renderResults);
+  input.addEventListener('keydown', e => {
+    if (e.isComposing) return; // IME変換中の操作は無視
+    const items = resultsEl.querySelectorAll('.item');
+    const key = e.key || { 13: 'Enter', 38: 'ArrowUp', 40: 'ArrowDown', 27: 'Escape' }[e.keyCode] || '';
+    if (key === 'ArrowDown' || key === 'ArrowUp') {
+      e.preventDefault();
+      if (!items.length) return;
+      activeIdx = key === 'ArrowDown'
+        ? (activeIdx + 1) % items.length
+        : (activeIdx - 1 + items.length) % items.length;
+      items.forEach((el, i) => el.classList.toggle('active', i === activeIdx));
+      items[activeIdx].scrollIntoView({ block: 'nearest' });
+    } else if (key === 'Enter') {
+      e.preventDefault();
+      choose(activeIdx >= 0 ? activeIdx : 0);
+    } else if (key === 'Escape') {
+      resultsEl.style.display = 'none';
+    }
+  });
+  resultsEl.addEventListener('click', e => {
+    const item = e.target.closest('.item');
+    if (item) choose(+item.dataset.i);
+  });
+  clearBtn.addEventListener('click', () => {
+    input.value = '';
+    renderResults();
+    overlay.clearLayers();
+    if (selectedMarker) { selectedMarker.setIcon(makeIcon(selectedMarker._school, false)); selectedMarker.closePopup(); selectedMarker = null; }
+    map.flyToBounds(allBounds.pad(0.05), { duration: 0.7 });
+  });
+  map.on('click', () => { resultsEl.style.display = 'none'; });
+})();
+</script>
+</body>
+</html>

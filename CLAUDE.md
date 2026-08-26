@@ -7,6 +7,12 @@
 - launch.json（iCloudルートの .claude/launch.json）に `cheer-map` 登録済み・ポート3070
 - 中身は `npx http-server -p 3070`（python3はiCloudフォルダへのTCC権限が無く起動に失敗するのでNode方式）
 
+## 公開（2026-08-26〜）
+- 公開URL: **https://fullmates2024-debug.github.io/cheer-map/**（GitHub Pages・URLを知っていれば誰でも閲覧可）
+- リポジトリ: https://github.com/fullmates2024-debug/cheer-map（public・このフォルダがそのままgitリポジトリ）
+- 更新方法: ファイルを編集 → `git add -A && git commit && git push` で1〜2分後に自動反映
+- gh CLIは `~/.local/bin/gh`（fullmates2024-debugでログイン済み・keyring保存）
+
 ## 機能
 - 72校のピン（吹田35=青、豊中37=赤）
 - ピンタップ／検索選択で：学校名・児童数・住所のポップアップ＋校区ポリゴン＋500m/1km/1.5kmの同心円

@@ -10,6 +10,7 @@
     --accent: #e5548a;
     --suita: #1e78d2;
     --toyonaka: #e0506e;
+    --addr: #8046c8;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif; }
@@ -48,6 +49,8 @@
   .results .sub { font-size: 11px; color: #888; }
   .results .cnt { font-size: 13px; color: var(--accent); font-weight: 700; white-space: nowrap; }
   .results .none { padding: 12px 14px; font-size: 13px; color: #888; }
+  .results .item.addr-search .nm, .results .item.addr-item .nm { color: var(--addr); }
+  .results .item.addr-search:hover, .results .item.addr-item:hover { background: #f3ecfb; }
 
   /* 市バッジ */
   .badge { display: inline-block; font-size: 10px; font-weight: 700; color: #fff;
@@ -65,6 +68,7 @@
   .pin.suita .dot { background: var(--suita); }
   .pin.toyonaka .dot { background: var(--toyonaka); }
   .pin.selected .dot { background: var(--accent); outline: 3px solid rgba(229,84,138,.35); }
+  .pin.addr .dot { background: var(--addr); outline: 3px solid rgba(128,70,200,.3); }
 
   /* ポップアップ */
   .leaflet-popup-content { margin: 14px 18px; line-height: 1.5; }
@@ -193,9 +197,11 @@
     }
   }).observe(document.getElementById('map'));
 
-  // 選択時のオーバーレイ
+  // 選択時のオーバーレイ（学校用と住所ピン用は独立。重ねて比較できる）
   const overlay = L.layerGroup().addTo(map);
+  const addrOverlay = L.layerGroup().addTo(map);
   let selectedMarker = null;
+  let addrMarker = null;
 
   function makeIcon(s, selected) {
     const cls = 'pin ' + CITY_CLS[s.city] + (selected ? ' selected' : '');
@@ -209,7 +215,10 @@
   const markers = SCHOOLS.map(s => {
     const m = L.marker([s.point[1], s.point[0]], { icon: makeIcon(s, false), title: s.short });
     m.bindPopup(popupHtml(s), { maxWidth: 280 });
-    m.on('click', () => select(s, m, false));
+    m.on('click', () => {
+      if (selectedMarker === m) deselectSchool();
+      else select(s, m, false);
+    });
     m.addTo(map);
     s._marker = m;
     return m;
@@ -220,7 +229,7 @@
     const st = s.students != null ? s.students.toLocaleString() : '不明';
     return '<div class="pp-name"><span class="badge ' + cls + '">' + s.city + '</span>' + s.short + '</div>' +
       '<div class="pp-students">児童数 <b>' + st + '</b> 人</div>' +
-      '<div class="pp-note">' + ASOF[s.city] + '｜' + s.address + '<br>円は学校から 500m / 1km / 1.5km</div>';
+      '<div class="pp-note">' + ASOF[s.city] + '｜' + s.address + '<br>円は学校から 500m / 1km / 1.5km（もう一度タップで非表示）</div>';
   }
 
   function select(s, marker, fly) {
@@ -259,6 +268,53 @@
       map.once('moveend', () => marker.openPopup());
       map.flyToBounds(b.pad(0.05), { duration: 0.7 });
     }
+  }
+
+  function deselectSchool() {
+    overlay.clearLayers();
+    if (selectedMarker) {
+      selectedMarker.setIcon(makeIcon(selectedMarker._school, false));
+      selectedMarker.closePopup();
+      selectedMarker = null;
+    }
+  }
+
+  // ---- 住所ピン（施設からの逆算用）: 任意地点＋半径1.5km円 ----
+  function clearAddr() {
+    addrOverlay.clearLayers();
+    addrMarker = null;
+  }
+
+  function showAddr(lat, lon, title) {
+    clearAddr();
+    const icon = L.divIcon({
+      className: '',
+      html: '<div class="pin addr" style="width:28px;height:28px"><div class="dot"></div></div>',
+      iconSize: [28, 28], iconAnchor: [14, 26], popupAnchor: [0, -26]
+    });
+    addrMarker = L.marker([lat, lon], { icon: icon, title: title });
+    addrMarker.bindPopup(
+      '<div class="pp-name">📍 ' + title + '</div>' +
+      '<div class="pp-note">この地点から半径1.5km（ピンをもう一度タップで非表示）</div>',
+      { maxWidth: 280 });
+    addrMarker.on('click', () => clearAddr());
+    addrMarker.addTo(addrOverlay);
+
+    const ring = L.circle([lat, lon], {
+      radius: 1500, color: '#ffffff', weight: 5, opacity: 0.9,
+      fill: false, interactive: false
+    }).addTo(addrOverlay);
+    L.circle([lat, lon], {
+      radius: 1500, color: '#8046c8', weight: 2.5, dashArray: '7 7',
+      fillColor: '#8046c8', fillOpacity: 0.07, interactive: false
+    }).addTo(addrOverlay);
+    L.tooltip({ permanent: true, direction: 'top', className: 'ring-label', offset: [0, 0] })
+      .setLatLng([lat + 1500 / 111320, lon])
+      .setContent('1.5km')
+      .addTo(addrOverlay);
+
+    map.once('moveend', () => addrMarker && addrMarker.openPopup());
+    map.flyToBounds(ring.getBounds().pad(0.08), { duration: 0.7 });
   }
 
   // ---- 児童数ランキング ----
@@ -308,11 +364,13 @@
   const input = document.getElementById('q');
   const resultsEl = document.getElementById('results');
   const clearBtn = document.getElementById('clearBtn');
-  let activeIdx = -1, currentHits = [];
+  let activeIdx = -1, currentHits = [], addrHits = [];
 
   const kata2hira = str => str.replace(/[ァ-ヶ]/g,
     ch => String.fromCharCode(ch.charCodeAt(0) - 0x60));
   const norm = str => kata2hira(String(str || '').trim().toLowerCase());
+  const esc = str => String(str).replace(/[&<>"']/g,
+    ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 
   function search(qRaw) {
     const q = norm(qRaw);
@@ -323,15 +381,25 @@
     );
   }
 
+  // 住所として検索する行（学校ヒットの下に常に出す）
+  function addrSearchRow(q) {
+    if (q.trim().length < 2) return '';
+    return '<div class="item addr-search">' +
+      '<div><div class="nm">📍 「' + esc(q.trim()) + '」を住所から探す</div>' +
+      '<div class="sub">公民館など施設の住所に半径1.5kmの円を表示</div></div>' +
+      '<div class="cnt">›</div></div>';
+  }
+
   // 入力欄そのものは絶対に再描画しない（IME変換を守る）。結果リストだけ更新する
   function renderResults() {
     const q = input.value;
     clearBtn.style.display = q ? 'block' : 'none';
-    if (!q.trim()) { resultsEl.style.display = 'none'; resultsEl.innerHTML = ''; currentHits = []; return; }
+    if (!q.trim()) { resultsEl.style.display = 'none'; resultsEl.innerHTML = ''; currentHits = []; addrHits = []; return; }
     currentHits = search(q);
+    addrHits = [];
     activeIdx = -1;
     if (!currentHits.length) {
-      resultsEl.innerHTML = '<div class="none">該当する小学校がありません</div>';
+      resultsEl.innerHTML = '<div class="none">該当する小学校がありません</div>' + addrSearchRow(q);
       resultsEl.style.display = 'block';
       return;
     }
@@ -341,8 +409,32 @@
         '<div><div class="nm"><span class="badge ' + cls + '">' + s.city + '</span>' + s.short + '</div>' +
         '<div class="sub">' + (s.yomi ? s.yomi + '｜' : '') + s.address + '</div></div>' +
         '<div class="cnt">' + (s.students != null ? s.students.toLocaleString() + '人' : '') + '</div></div>';
-    }).join('');
+    }).join('') + addrSearchRow(q);
     resultsEl.style.display = 'block';
+  }
+
+  // 地理院の住所検索API（APIキー不要）で候補を出す
+  async function searchAddress(qRaw) {
+    const q = qRaw.trim();
+    if (!q) return;
+    resultsEl.innerHTML = '<div class="none">住所を検索中…</div>';
+    resultsEl.style.display = 'block';
+    try {
+      const res = await fetch('https://msearch.gsi.go.jp/address-search/AddressSearch?q=' + encodeURIComponent(q));
+      const list = await res.json();
+      addrHits = (Array.isArray(list) ? list : []).slice(0, 8);
+      currentHits = [];
+      if (!addrHits.length) {
+        resultsEl.innerHTML = '<div class="none">住所が見つかりません。市名から入力してみてください（例：吹田市山田西4丁目）</div>';
+        return;
+      }
+      resultsEl.innerHTML = addrHits.map((f, i) =>
+        '<div class="item addr-item" data-a="' + i + '">' +
+        '<div><div class="nm">📍 ' + esc(f.properties.title) + '</div>' +
+        '<div class="sub">この地点に半径1.5kmの円を表示</div></div></div>').join('');
+    } catch (e) {
+      resultsEl.innerHTML = '<div class="none">住所検索に失敗しました（通信エラー）。時間をおいて再度お試しください</div>';
+    }
   }
 
   function choose(i) {
@@ -353,9 +445,19 @@
     select(s, s._marker, true);
   }
 
+  function chooseAddr(i) {
+    const f = addrHits[i];
+    if (!f) return;
+    resultsEl.style.display = 'none';
+    input.blur();
+    showAddr(f.geometry.coordinates[1], f.geometry.coordinates[0], f.properties.title);
+  }
+
   document.getElementById('searchForm').addEventListener('submit', e => {
     e.preventDefault();
     if (currentHits.length) choose(activeIdx >= 0 ? activeIdx : 0);
+    else if (addrHits.length) chooseAddr(0);
+    else searchAddress(input.value);
   });
   input.addEventListener('input', renderResults);
   input.addEventListener('focus', renderResults);
@@ -373,20 +475,26 @@
       items[activeIdx].scrollIntoView({ block: 'nearest' });
     } else if (key === 'Enter') {
       e.preventDefault();
-      choose(activeIdx >= 0 ? activeIdx : 0);
+      if (currentHits.length) choose(activeIdx >= 0 ? activeIdx : 0);
+      else if (addrHits.length) chooseAddr(0);
+      else searchAddress(input.value);
     } else if (key === 'Escape') {
       resultsEl.style.display = 'none';
     }
   });
   resultsEl.addEventListener('click', e => {
+    const addrSearch = e.target.closest('.addr-search');
+    if (addrSearch) { searchAddress(input.value); return; }
+    const addrItem = e.target.closest('.addr-item');
+    if (addrItem) { chooseAddr(+addrItem.dataset.a); return; }
     const item = e.target.closest('.item');
     if (item) choose(+item.dataset.i);
   });
   clearBtn.addEventListener('click', () => {
     input.value = '';
     renderResults();
-    overlay.clearLayers();
-    if (selectedMarker) { selectedMarker.setIcon(makeIcon(selectedMarker._school, false)); selectedMarker.closePopup(); selectedMarker = null; }
+    deselectSchool();
+    clearAddr();
     map.flyToBounds(allBounds.pad(0.05), { duration: 0.7 });
   });
   map.on('click', () => { resultsEl.style.display = 'none'; });

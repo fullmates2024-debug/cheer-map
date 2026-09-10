@@ -21,7 +21,9 @@ import json, sys, os
 
 CITIES = {'27203': '豊中市', '27204': '池田市', '27205': '吹田市',
           '27207': '高槻市', '27211': '茨木市', '27301': '島本町'}
-STUDENT_CITIES = ('吹田市', '豊中市')   # 児童数データを持つ市（検証対象）
+# students.json のキー（この節がある市町は児童数を検証しランキング対象になる）
+CITY_KEYS = {'吹田市': 'suita', '豊中市': 'toyonaka', '高槻市': 'takatsuki',
+             '池田市': 'ikeda', '茨木市': 'ibaraki', '島本町': 'shimamoto'}
 
 YOMI_OVERRIDES = {
     '新田': 'しんでん', '新田南': 'しんでんみなみ', '豊島': 'てしま', '豊島北': 'てしまきた',
@@ -108,13 +110,16 @@ def main(a27_path, p29_path):
             add(name, geom, city, addr)
 
     st_all = {}
-    st_all.update(students['suita']['schools'])
-    st_all.update(students['toyonaka']['schools'])
+    student_cities = []
+    for city, key in CITY_KEYS.items():
+        if key in students:
+            st_all.update(students[key]['schools'])
+            student_cities.append(city)
 
     out = []
     for e in schools.values():
         assert e['point'], '位置不明: ' + e['name']
-        if e['city'] in STUDENT_CITIES:
+        if e['city'] in student_cities:
             assert e['name'] in st_all, '児童数不明: ' + e['name']
         base = e['short'].replace('小学校', '')
         e['yomi'] = yomi.get(base, '')
@@ -133,7 +138,8 @@ def main(a27_path, p29_path):
             'pointSource': '国土数値情報 学校データ（P29-23 令和5年度）国土交通省',
             'suita': {k: students['suita'][k] for k in ('source', 'sourceUrl', 'asOf')},
             'toyonaka': {k: students['toyonaka'][k] for k in ('source', 'sourceUrl', 'asOf')},
-            'otherCities': '高槻市・池田市・茨木市・島本町は2026-09-10追加（児童数は未調査）',
+            'students': {city: {k: students[key][k] for k in ('source', 'sourceUrl', 'asOf')}
+                         for city, key in CITY_KEYS.items() if key in students},
         },
         'schools': out,
     }

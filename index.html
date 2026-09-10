@@ -153,10 +153,10 @@
     width: 34px; height: 34px; border: none; border-radius: 50%;
     background: #eee; color: #555; font-size: 16px; cursor: pointer;
   }
-  .rank-tabs { display: flex; gap: 6px; padding: 0 16px 10px; }
+  .rank-tabs { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 16px 10px; }
   .rank-tabs button {
-    flex: 1; padding: 8px 0; border: 1.5px solid #ddd; border-radius: 18px;
-    background: #fff; color: #555; font-size: 13px; font-weight: 700; cursor: pointer;
+    flex: 1 0 auto; padding: 7px 12px; border: 1.5px solid #ddd; border-radius: 18px;
+    background: #fff; color: #555; font-size: 12.5px; font-weight: 700; cursor: pointer;
   }
   .rank-tabs button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
   .rank-list { flex: 1; overflow-y: auto; border-top: 1px solid #eee; }
@@ -199,8 +199,12 @@
   </div>
   <div class="rank-tabs">
     <button data-tab="all" class="active">全体</button>
-    <button data-tab="吹田市">吹田市</button>
-    <button data-tab="豊中市">豊中市</button>
+    <button data-tab="吹田市">吹田</button>
+    <button data-tab="豊中市">豊中</button>
+    <button data-tab="高槻市">高槻</button>
+    <button data-tab="茨木市">茨木</button>
+    <button data-tab="池田市">池田</button>
+    <button data-tab="島本町">島本</button>
   </div>
   <div id="rankList" class="rank-list"></div>
   <div id="rankNote" class="rank-note"></div>
@@ -225,7 +229,9 @@
   const PRESCHOOLS = window.PRESCHOOL_DATA.items;
   const CITY_CLS = { '吹田市': 'suita', '豊中市': 'toyonaka', '高槻市': 'takatsuki',
     '池田市': 'ikeda', '茨木市': 'ibaraki', '島本町': 'shimamoto' };
-  const ASOF = { '吹田市': DATA.meta.suita.asOf, '豊中市': DATA.meta.toyonaka.asOf };
+  const ASOF = {};
+  Object.entries(DATA.meta.students || { '吹田市': DATA.meta.suita, '豊中市': DATA.meta.toyonaka })
+    .forEach(([c, m]) => { ASOF[c] = m.asOf; });
 
   const map = L.map('map', { zoomControl: false });
   window._map = map;
@@ -577,7 +583,8 @@
         '<div class="sub">' + s.address + '</div></div>' +
         '<div class="rank-st">' + (s.students != null ? s.students.toLocaleString() : '—') + ' <small>人</small></div></div>';
     }).join('');
-    rankNoteEl.textContent = '児童数: 吹田市＝' + DATA.meta.suita.asOf + '／豊中市＝' + DATA.meta.toyonaka.asOf +
+    rankNoteEl.textContent = '児童数: ' +
+      Object.entries(ASOF).map(([c, a]) => c + '＝' + a).join('／') +
       '。タップすると地図でその学校を表示します。';
   }
 

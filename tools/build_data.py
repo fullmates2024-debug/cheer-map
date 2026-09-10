@@ -11,10 +11,17 @@ A27-23（令和5年度）には以下の既知の誤り・古い情報があり�
   - 豊中「庄内小学校」→ 2022年に庄内さくら学園（義務教育学校）へ統合。
     さくら学園は2024年から野田町1-1の新校舎
   - 豊中「庄内南・庄内西・千成」→ 2026年4月に庄内よつば学園（義務教育学校・千成町）へ統合
+  - 高槻「芝生小学校」の校区が2件 → 学校コードB127210005291（芝生町3-16-2）は
+    実際は丸橋小学校の校区（P29の学校コードで突合し確認・2026-09-10）
+
+2026-09-10: 会場マップ対応で高槻・池田・茨木・島本を追加（児童数は未調査=null。
+児童数の検証・ランキングは吹田・豊中のみ）。
 """
 import json, sys, os
 
-CITIES = {'27203': '豊中市', '27205': '吹田市'}
+CITIES = {'27203': '豊中市', '27204': '池田市', '27205': '吹田市',
+          '27207': '高槻市', '27211': '茨木市', '27301': '島本町'}
+STUDENT_CITIES = ('吹田市', '豊中市')   # 児童数データを持つ市（検証対象）
 
 YOMI_OVERRIDES = {
     '新田': 'しんでん', '新田南': 'しんでんみなみ', '豊島': 'てしま', '豊島北': 'てしまきた',
@@ -83,7 +90,9 @@ def main(a27_path, p29_path):
         geom = f['geometry']
 
         # --- A27の補正（docstring参照） ---
-        if name == '吹田市立弘済小学校':
+        if name == '高槻市立芝生小学校' and p['A27_003'] == 'B127210005291':
+            add('高槻市立丸橋小学校', geom, city, '高槻市芝生町3-16-2')
+        elif name == '吹田市立弘済小学校':
             add('吹田市立古江台小学校', geom, city, '吹田市古江台5-6-1')
         elif name == '吹田市立山田第五小学校':
             add('吹田市立山田第三小学校', geom, city, '吹田市山田西1-4-1')
@@ -105,10 +114,11 @@ def main(a27_path, p29_path):
     out = []
     for e in schools.values():
         assert e['point'], '位置不明: ' + e['name']
-        assert e['name'] in st_all, '児童数不明: ' + e['name']
+        if e['city'] in STUDENT_CITIES:
+            assert e['name'] in st_all, '児童数不明: ' + e['name']
         base = e['short'].replace('小学校', '')
         e['yomi'] = yomi.get(base, '')
-        e['students'] = st_all[e['name']]
+        e['students'] = st_all.get(e['name'])
         e['point'] = [round(e['point'][0], 6), round(e['point'][1], 6)]
         e['polygon']['coordinates'] = rnd(e['polygon']['coordinates'])
         out.append(e)
@@ -123,16 +133,17 @@ def main(a27_path, p29_path):
             'pointSource': '国土数値情報 学校データ（P29-23 令和5年度）国土交通省',
             'suita': {k: students['suita'][k] for k in ('source', 'sourceUrl', 'asOf')},
             'toyonaka': {k: students['toyonaka'][k] for k in ('source', 'sourceUrl', 'asOf')},
+            'otherCities': '高槻市・池田市・茨木市・島本町は2026-09-10追加（児童数は未調査）',
         },
         'schools': out,
     }
     dst = os.path.join(here, '..', 'data', 'schools.js')
     with open(dst, 'w') as f:
         f.write('window.SCHOOL_DATA = ' + json.dumps(data, ensure_ascii=False) + ';\n')
-    n_su = sum(1 for e in out if e['city'] == '吹田市')
-    n_to = sum(1 for e in out if e['city'] == '豊中市')
-    print('生成完了: %d校（吹田%d / 豊中%d） %dKB' % (
-        len(out), n_su, n_to, os.path.getsize(dst) // 1024))
+    from collections import Counter
+    c = Counter(e['city'] for e in out)
+    print('生成完了: %d校 %s %dKB' % (
+        len(out), dict(sorted(c.items())), os.path.getsize(dst) // 1024))
 
 
 if __name__ == '__main__':

@@ -1,0 +1,4 @@
+city,name,kind,students,asof,address,lat,lon,src
+高槻市,関西大学初等部,私立,369,2026-05-01,大阪府高槻市白梅町7-1,34.854965,135.622856,https://www.kansai-u.ac.jp/elementary/about/basic.html
+豊中市,箕面自由学園小学校,私立,229,2026-05-01,大阪府豊中市宮山町4-21-1,34.812812,135.463328,https://mino-jiyu.ed.jp/school/index.html
+池田市,大阪教育大学附属池田小学校,国立,602,2026-05-01,大阪府池田市緑丘1-5-1,34.820326,135.439122,https://osaka-kyoiku.ac.jp/Portals/0/files/university/center/school/fuzoku_gaiyou/R8youjijidouseitosuu.pdf

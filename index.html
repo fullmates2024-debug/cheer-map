@@ -83,6 +83,8 @@
   .pin.shimamoto .dot { background: var(--shimamoto); }
   .pin.selected .dot { background: var(--accent); outline: 3px solid rgba(229,84,138,.35); }
   .pin.addr .dot { background: var(--addr); outline: 3px solid rgba(128,70,200,.3); }
+  .pin.priv .dot { background: #455a64; }
+  .badge.priv { background: #455a64; }
 
   /* 会場ピン（ひし形） */
   .vpin { width: 22px; height: 22px; transform: rotate(45deg);
@@ -97,6 +99,8 @@
   .pp-vtable th:first-child { text-align: left; }
   .pp-vtable td { padding: 2px 6px; text-align: right; font-variant-numeric: tabular-nums; border-top: 1px solid #f0f0f0; }
   .pp-vtable td:first-child { text-align: left; font-weight: 700; }
+  .pp-vtable.kids { font-size: 13px; }
+  .pp-vtable.kids td.tot { font-weight: 800; color: var(--accent); }
   .pp-badges { margin: 4px 0; }
   .pp-abadge { display: inline-block; font-size: 11px; font-weight: 700; border-radius: 6px;
     padding: 1px 8px; margin-right: 4px; background: #e1f3e9; color: #17754a; }
@@ -221,12 +225,14 @@
 <script src="data/schools.js"></script>
 <script src="data/venues.js"></script>
 <script src="data/preschools.js"></script>
+<script src="data/private_schools.js"></script>
 <script>
 (function () {
   const DATA = window.SCHOOL_DATA;
   const SCHOOLS = DATA.schools;
   const VENUES = window.VENUE_DATA.venues;
   const PRESCHOOLS = window.PRESCHOOL_DATA.items;
+  const PRIVATES = (window.PRIVATE_ELEM || { items: [] }).items;
   const CITY_CLS = { '吹田市': 'suita', '豊中市': 'toyonaka', '高槻市': 'takatsuki',
     '池田市': 'ikeda', '茨木市': 'ibaraki', '島本町': 'shimamoto' };
   const ASOF = {};
@@ -294,6 +300,21 @@
     m.addTo(map);
     s._marker = m;
     return m;
+  });
+
+  // 私立・国立小（校区なし）: 濃グレーのピン
+  PRIVATES.forEach(s => {
+    const icon = L.divIcon({
+      className: '',
+      html: '<div class="pin priv" style="width:24px;height:24px"><div class="dot"></div></div>',
+      iconSize: [24, 24], iconAnchor: [12, 22], popupAnchor: [0, -22]
+    });
+    const m = L.marker([s.lat, s.lon], { icon: icon, title: s.name });
+    m.bindPopup('<div class="pp-name"><span class="badge priv">' + s.kind + '</span>' + s.name + '</div>' +
+      '<div class="pp-students">児童数 ' + (s.students != null ? '<b>' + s.students.toLocaleString() + '</b> 人' : '未公表') + '</div>' +
+      '<div class="pp-note">' + (s.asOf ? s.asOf + '｜' : '') + s.city + '（' + s.kind + '＝校区なし・通学圏は広域）</div>',
+      { maxWidth: 280 });
+    m.addTo(map);
   });
 
   function popupHtml(s) {
@@ -447,13 +468,31 @@
 
   function venueStats(v) {
     const counts = RADII.map(() => ({ '小学校': 0, '保育園': 0, '幼稚園': 0, '認定こども園': 0, '小規模保育': 0 }));
+    // kids: pub=公立小児童 priv=私立小児童 en=園児(保・こ・幼、在籍優先→定員) enUnk=人数不明園
+    //       c3=うち3歳以上判明分 sho=小規模保育(0-2歳・別掲) shoUnk=同不明
+    const kids = RADII.map(() => ({ pub: 0, priv: 0, en: 0, enUnk: 0, c3: 0, sho: 0, shoUnk: 0 }));
     SCHOOLS.forEach(s => {
       const d = havM(v.lat, v.lon, s.point[1], s.point[0]);
-      RADII.forEach(([r], i) => { if (d <= r) counts[i]['小学校']++; });
+      RADII.forEach(([r], i) => { if (d <= r) { counts[i]['小学校']++; kids[i].pub += (s.students || 0); } });
+    });
+    PRIVATES.forEach(s => {
+      const d = havM(v.lat, v.lon, s.lat, s.lon);
+      RADII.forEach(([r], i) => { if (d <= r) { counts[i]['小学校']++; kids[i].priv += (s.students || 0); } });
     });
     PRESCHOOLS.forEach(p => {
       const d = havM(v.lat, v.lon, p.lat, p.lon);
-      RADII.forEach(([r], i) => { if (d <= r) counts[i][p.t]++; });
+      const n = (p.enr != null ? p.enr : (p.cap != null ? p.cap : null));
+      RADII.forEach(([r], i) => {
+        if (d > r) return;
+        if (p.t in counts[i]) counts[i][p.t]++;
+        const k = kids[i];
+        if (p.t === '小規模保育') {
+          if (n != null) k.sho += n; else k.shoUnk++;
+        } else {
+          if (n != null) k.en += n; else k.enUnk++;
+          if (p.c3 != null) k.c3 += p.c3;
+        }
+      });
     });
     const dists = RADII.map(() => []);   // 各半径と重なる校区
     let home = null;
@@ -462,7 +501,7 @@
       if (d === 0 && !home) home = s;
       RADII.forEach(([r], i) => { if (d <= r) dists[i].push(s); });
     });
-    return { counts, dists, home };
+    return { counts, kids, dists, home };
   }
 
   function venuePopupHtml(v, st) {
@@ -471,6 +510,26 @@
       '<div class="pp-badges"><span class="pp-abadge">空き枠A ' + v.a + '</span>' +
       '<span class="pp-abadge b">B ' + v.b + '</span></div>';
     if (v.warn) h += '<div class="pp-warn">⚠ ' + esc(v.warn) + '</div>';
+    const F = n => n.toLocaleString();
+    // ---- 人数（主役）----
+    h += '<div style="font-size:11px;color:#999;margin-top:4px;font-weight:600">円内の子どもの数（人）</div>';
+    h += '<table class="pp-vtable kids"><tr><th></th><th>小学生</th><th>園児</th><th>計</th></tr>';
+    RADII.forEach(([r, lbl], i) => {
+      const k = st.kids[i];
+      const elem = k.pub + k.priv, en = k.en;
+      h += '<tr><td>' + lbl + '</td><td>' + F(elem) + '</td><td>' + F(en) +
+        '</td><td class="tot">' + F(elem + en) + '</td></tr>';
+    });
+    h += '</table>';
+    const k15 = st.kids[2];
+    const notes = [];
+    if (k15.priv) notes.push('小学生に私立' + F(k15.priv) + '人含む');
+    if (k15.c3) notes.push('園児のうち3歳以上判明分' + F(k15.c3) + '人');
+    if (k15.sho || k15.shoUnk) notes.push('小規模保育(0-2歳)は別掲' + F(k15.sho) + '人' + (k15.shoUnk ? '＋不明' + k15.shoUnk + '園' : ''));
+    if (k15.enUnk) notes.push('人数不明の園' + k15.enUnk + '園は園児数に未算入');
+    if (notes.length) h += '<div style="font-size:10px;color:#999;margin:1px 0 2px">※1.5km時点: ' + notes.join('／') + '</div>';
+    // ---- 施設数（従） ----
+    h += '<div style="font-size:11px;color:#999;margin-top:5px;font-weight:600">施設数</div>';
     h += '<table class="pp-vtable"><tr><th></th><th>小学校</th><th>保育園</th><th>幼稚園</th><th>こども園</th><th>小規模</th></tr>';
     RADII.forEach(([r, lbl], i) => {
       const c = st.counts[i];
@@ -490,7 +549,7 @@
     h += '</div>';
     h += '<a class="pp-syslink" href="' + v.sysUrl + '" target="_blank" rel="noopener">' + esc(v.sysName) + ' ↗</a>';
     h += '<div class="pp-note" style="margin-top:5px">' + esc(v.addr) + '<br>A=' + esc(window.VENUE_DATA.asOf) +
-      '（平日16-18時を含む4週連続の空き枠数）。数・校区は直線距離。もう一度タップで円を非表示</div>';
+      '（平日16-18時を含む4週連続の空き枠数）。人数・校区は直線距離ベース。園児は在籍数優先・未公表は定員。もう一度タップで円を非表示</div>';
     return h;
   }
 
@@ -555,9 +614,13 @@
   function buildPsLayer() {
     const PS_COLOR = { '保育園': '#12b886', '幼稚園': '#f59f00', '認定こども園': '#7048e8', '小規模保育': '#868e96' };
     PRESCHOOLS.forEach(p => {
+      const nn = (p.enr != null ? p.enr : p.cap);
       L.circleMarker([p.lat, p.lon], {
-        radius: 5, color: '#fff', weight: 1.5, fillColor: PS_COLOR[p.t], fillOpacity: 0.95
-      }).bindTooltip(p.n + '（' + p.t + '）').addTo(psLayer);
+        radius: 5, color: '#fff', weight: 1.5, fillColor: PS_COLOR[p.t],
+        fillOpacity: p.sus ? 0.4 : 0.95
+      }).bindTooltip(p.n + '（' + p.t +
+        (p.sus ? '・休止中' : (nn != null ? '・' + (p.enr != null ? '在籍' : '定員') + nn + '人' : '')) + '）'
+      ).addTo(psLayer);
     });
     // 既定はOFF（レイヤーコントロールでON）
   }

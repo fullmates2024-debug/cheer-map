@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>チア校区マップ｜北摂</title>
+<title>チア校区マップ｜北摂・阪神</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
   :root {
@@ -14,6 +14,15 @@
     --ikeda: #e8871e;
     --ibaraki: #8b5cf6;
     --shimamoto: #8d6e52;
+    --minoh: #66a80f;
+    --settsu: #099268;
+    --hirakata: #d9480f;
+    --higashiyodogawa: #495057;
+    --amagasaki: #1098ad;
+    --nishinomiya: #364fc7;
+    --itami: #9c36b5;
+    --takarazuka: #a61e4d;
+    --kawanishi: #1864ab;
     --addr: #8046c8;
     --venue: #0b7285;
   }
@@ -66,6 +75,15 @@
   .badge.ikeda { background: var(--ikeda); }
   .badge.ibaraki { background: var(--ibaraki); }
   .badge.shimamoto { background: var(--shimamoto); }
+  .badge.minoh { background: var(--minoh); }
+  .badge.settsu { background: var(--settsu); }
+  .badge.hirakata { background: var(--hirakata); }
+  .badge.higashiyodogawa { background: var(--higashiyodogawa); }
+  .badge.amagasaki { background: var(--amagasaki); }
+  .badge.nishinomiya { background: var(--nishinomiya); }
+  .badge.itami { background: var(--itami); }
+  .badge.takarazuka { background: var(--takarazuka); }
+  .badge.kawanishi { background: var(--kawanishi); }
   .badge.venue { background: var(--venue); }
 
   /* ピン */
@@ -81,6 +99,15 @@
   .pin.ikeda .dot { background: var(--ikeda); }
   .pin.ibaraki .dot { background: var(--ibaraki); }
   .pin.shimamoto .dot { background: var(--shimamoto); }
+  .pin.minoh .dot { background: var(--minoh); }
+  .pin.settsu .dot { background: var(--settsu); }
+  .pin.hirakata .dot { background: var(--hirakata); }
+  .pin.higashiyodogawa .dot { background: var(--higashiyodogawa); }
+  .pin.amagasaki .dot { background: var(--amagasaki); }
+  .pin.nishinomiya .dot { background: var(--nishinomiya); }
+  .pin.itami .dot { background: var(--itami); }
+  .pin.takarazuka .dot { background: var(--takarazuka); }
+  .pin.kawanishi .dot { background: var(--kawanishi); }
   .pin.selected .dot { background: var(--accent); outline: 3px solid rgba(229,84,138,.35); }
   .pin.addr .dot { background: var(--addr); outline: 3px solid rgba(128,70,200,.3); }
   .pin.priv .dot { background: #455a64; }
@@ -157,9 +184,10 @@
     width: 34px; height: 34px; border: none; border-radius: 50%;
     background: #eee; color: #555; font-size: 16px; cursor: pointer;
   }
-  .rank-tabs { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 16px 10px; }
+  .rank-tabs { display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 6px; padding: 0 16px 10px;
+    -webkit-overflow-scrolling: touch; scrollbar-width: thin; }
   .rank-tabs button {
-    flex: 1 0 auto; padding: 7px 12px; border: 1.5px solid #ddd; border-radius: 18px;
+    flex: 0 0 auto; padding: 7px 12px; border: 1.5px solid #ddd; border-radius: 18px;
     background: #fff; color: #555; font-size: 12.5px; font-weight: 700; cursor: pointer;
   }
   .rank-tabs button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
@@ -201,15 +229,7 @@
     <h2>児童数ランキング</h2>
     <button id="rankClose" class="rank-close" title="閉じる">✕</button>
   </div>
-  <div class="rank-tabs">
-    <button data-tab="all" class="active">全体</button>
-    <button data-tab="吹田市">吹田</button>
-    <button data-tab="豊中市">豊中</button>
-    <button data-tab="高槻市">高槻</button>
-    <button data-tab="茨木市">茨木</button>
-    <button data-tab="池田市">池田</button>
-    <button data-tab="島本町">島本</button>
-  </div>
+  <div class="rank-tabs" id="rankTabs"></div>
   <div id="rankList" class="rank-list"></div>
   <div id="rankNote" class="rank-note"></div>
 </div>
@@ -234,7 +254,14 @@
   const PRESCHOOLS = window.PRESCHOOL_DATA.items;
   const PRIVATES = (window.PRIVATE_ELEM || { items: [] }).items;
   const CITY_CLS = { '吹田市': 'suita', '豊中市': 'toyonaka', '高槻市': 'takatsuki',
-    '池田市': 'ikeda', '茨木市': 'ibaraki', '島本町': 'shimamoto' };
+    '池田市': 'ikeda', '茨木市': 'ibaraki', '島本町': 'shimamoto',
+    '箕面市': 'minoh', '摂津市': 'settsu', '枚方市': 'hirakata',
+    '大阪市東淀川区': 'higashiyodogawa',
+    '尼崎市': 'amagasaki', '西宮市': 'nishinomiya', '伊丹市': 'itami',
+    '宝塚市': 'takarazuka', '川西市': 'kawanishi' };
+  const CITY_ORDER = ['吹田市', '豊中市', '高槻市', '茨木市', '池田市', '島本町',
+    '箕面市', '摂津市', '枚方市', '大阪市東淀川区',
+    '尼崎市', '西宮市', '伊丹市', '宝塚市', '川西市'];
   const ASOF = {};
   Object.entries(DATA.meta.students || { '吹田市': DATA.meta.suita, '豊中市': DATA.meta.toyonaka })
     .forEach(([c, m]) => { ASOF[c] = m.asOf; });
@@ -257,7 +284,7 @@
     { 'レッスン会場': venueLayer, '保育園・幼稚園・こども園': psLayer },
     { position: 'topright', collapsed: false }).addTo(map);
   map.attributionControl.addAttribution(
-    '校区・学校位置: <a href="https://nlftp.mlit.go.jp/ksj/">国土数値情報</a>（A27・P29）を加工｜児童数: 吹田市統計書・豊中市教委資料｜園: ここdeサーチ等｜会場: 各市予約システム');
+    '校区・学校位置: <a href="https://nlftp.mlit.go.jp/ksj/">国土数値情報</a>（A27・P29）を加工｜児童数: 各市区町の公式資料｜園: ここdeサーチ等｜会場: 各市予約システム');
   const psLegend = document.getElementById('psLegend');
   map.on('overlayadd', e => { if (e.layer === psLayer) psLegend.style.display = 'block'; });
   map.on('overlayremove', e => { if (e.layer === psLayer) psLegend.style.display = 'none'; });
@@ -325,7 +352,8 @@
     return '<div class="pp-name"><span class="badge ' + cls + '">' + s.city + '</span>' + s.short + '</div>' +
       '<div class="pp-students">' + st + '</div>' +
       '<div class="pp-note">' + (ASOF[s.city] ? ASOF[s.city] + '｜' : '') + s.address +
-      '<br>円は学校から 500m / 1km / 1.5km（もう一度タップで非表示）</div>';
+      '<br>円は学校から 500m / 1km / 1.5km（もう一度タップで非表示）' +
+      (s.polygon ? '' : '<br>※この学校は校区の形が公式未公開のため円のみ表示') + '</div>';
   }
 
   function select(s, marker, fly) {
@@ -336,11 +364,15 @@
     selectedMarker = marker;
 
     // 校区ポリゴン: 白フチ＋黒線＋黄色の薄塗り（地図でも航空写真でも見えるよう明度差で描く）
-    const gj = { type: 'Feature', geometry: s.polygon };
-    L.geoJSON(gj, { style: { color: '#ffffff', weight: 8, fill: false, opacity: 0.9 } }).addTo(overlay);
-    const poly = L.geoJSON(gj, {
-      style: { color: '#111111', weight: 2.5, fillColor: '#ffe600', fillOpacity: 0.22 }
-    }).addTo(overlay);
+    // 大阪市（東淀川区）と枚方・禁野小は校区の公式データが無いため polygon=null（円のみ）
+    let poly = null;
+    if (s.polygon) {
+      const gj = { type: 'Feature', geometry: s.polygon };
+      L.geoJSON(gj, { style: { color: '#ffffff', weight: 8, fill: false, opacity: 0.9 } }).addTo(overlay);
+      poly = L.geoJSON(gj, {
+        style: { color: '#111111', weight: 2.5, fillColor: '#ffe600', fillOpacity: 0.22 }
+      }).addTo(overlay);
+    }
 
     // 同心円 500m / 1000m / 1500m
     const center = [s.point[1], s.point[0]];
@@ -360,7 +392,8 @@
     });
 
     if (fly) {
-      const b = poly.getBounds().extend(L.latLng(center).toBounds(3000));
+      let b = L.latLng(center).toBounds(3000);
+      if (poly) b = poly.getBounds().extend(b);
       map.once('moveend', () => marker.openPopup());
       map.flyToBounds(b.pad(0.05), { duration: 0.7 });
     }
@@ -420,6 +453,7 @@
 
   // 校区の外接矩形を前計算（距離判定の足切り用）
   SCHOOLS.forEach(s => {
+    if (!s.polygon) { s._bbox = null; return; }
     let x0 = 999, y0 = 999, x1 = -999, y1 = -999;
     s.polygon.coordinates.forEach(poly => poly[0].forEach(c => {
       if (c[0] < x0) x0 = c[0]; if (c[0] > x1) x1 = c[0];
@@ -437,6 +471,7 @@
   }
   // 点(lat,lon)から校区ポリゴンまでの距離[m]（内部なら0）。局所平面近似
   function distToDistrict(lat, lon, s) {
+    if (!s._bbox) return Infinity;   // 校区ポリゴン非公開の学校
     const kx = 111320 * Math.cos(lat * Math.PI / 180), ky = 110540;
     const b = s._bbox;
     const dx = Math.max(b[0] - lon, 0, lon - b[2]) * kx;
@@ -633,6 +668,13 @@
   const rankNoteEl = document.getElementById('rankNote');
   let rankTab = 'all';
 
+  // タブは市区町リストから生成（児童数データがある市区町のみ）
+  document.getElementById('rankTabs').innerHTML =
+    '<button data-tab="all" class="active">全体</button>' +
+    CITY_ORDER.filter(c => SCHOOLS.some(s => s.city === c && s.students != null))
+      .map(c => '<button data-tab="' + c + '">' +
+        c.replace('大阪市', '').replace(/[市町]$/, '') + '</button>').join('');
+
   function renderRank() {
     const rows = SCHOOLS
       .filter(s => s.students != null)   // 児童数未調査の市（高槻等）はランキング対象外
@@ -646,9 +688,9 @@
         '<div class="sub">' + s.address + '</div></div>' +
         '<div class="rank-st">' + (s.students != null ? s.students.toLocaleString() : '—') + ' <small>人</small></div></div>';
     }).join('');
-    rankNoteEl.textContent = '児童数: ' +
-      Object.entries(ASOF).map(([c, a]) => c + '＝' + a).join('／') +
-      '。タップすると地図でその学校を表示します。';
+    rankNoteEl.textContent = rankTab === 'all'
+      ? '児童数の基準日は市区町により異なります（各校のポップアップに表示）。タップすると地図でその学校を表示します。'
+      : '児童数: ' + (ASOF[rankTab] || '') + '。タップすると地図でその学校を表示します。';
   }
 
   document.getElementById('rankBtn').addEventListener('click', () => {

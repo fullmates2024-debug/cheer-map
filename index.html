@@ -501,7 +501,7 @@
   const RADII = [[500, '500m'], [1000, '1km'], [1500, '1.5km']];
   const PS_TYPES = ['保育園', '幼稚園', '認定こども園', '小規模保育'];
   // 園データが整備済みの市町（それ以外の市区は「未調査」表示にする）
-  const PS_CITIES = new Set(PRESCHOOLS.map(p => p.city));
+  const PS_CITIES = new Set(PRESCHOOLS.map(p => p.c));
 
   function venueStats(v) {
     const counts = RADII.map(() => ({ '小学校': 0, '保育園': 0, '幼稚園': 0, '認定こども園': 0, '小規模保育': 0 }));

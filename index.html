@@ -500,6 +500,8 @@
 
   const RADII = [[500, '500m'], [1000, '1km'], [1500, '1.5km']];
   const PS_TYPES = ['保育園', '幼稚園', '認定こども園', '小規模保育'];
+  // 園データが整備済みの市町（それ以外の市区は「未調査」表示にする）
+  const PS_CITIES = new Set(PRESCHOOLS.map(p => p.city));
 
   function venueStats(v) {
     const counts = RADII.map(() => ({ '小学校': 0, '保育園': 0, '幼稚園': 0, '認定こども園': 0, '小規模保育': 0 }));
@@ -547,15 +549,17 @@
     if (v.warn) h += '<div class="pp-warn">⚠ ' + esc(v.warn) + '</div>';
     const F = n => n.toLocaleString();
     // ---- 人数（主役）----
+    const psKnown = PS_CITIES.has(v.city);
     h += '<div style="font-size:11px;color:#999;margin-top:4px;font-weight:600">円内の子どもの数（人）</div>';
     h += '<table class="pp-vtable kids"><tr><th></th><th>小学生</th><th>園児</th><th>計</th></tr>';
     RADII.forEach(([r, lbl], i) => {
       const k = st.kids[i];
       const elem = k.pub + k.priv, en = k.en;
-      h += '<tr><td>' + lbl + '</td><td>' + F(elem) + '</td><td>' + F(en) +
-        '</td><td class="tot">' + F(elem + en) + '</td></tr>';
+      h += '<tr><td>' + lbl + '</td><td>' + F(elem) + '</td><td>' + (psKnown ? F(en) : '—') +
+        '</td><td class="tot">' + (psKnown ? F(elem + en) : F(elem)) + '</td></tr>';
     });
     h += '</table>';
+    if (!psKnown) h += '<div style="font-size:10px;color:#999;margin:1px 0 2px">※この市の保育園・幼稚園は未調査のため園児は含まれていません</div>';
     const k15 = st.kids[2];
     const notes = [];
     if (k15.priv) notes.push('小学生に私立' + F(k15.priv) + '人含む');
@@ -568,8 +572,9 @@
     h += '<table class="pp-vtable"><tr><th></th><th>小学校</th><th>保育園</th><th>幼稚園</th><th>こども園</th><th>小規模</th></tr>';
     RADII.forEach(([r, lbl], i) => {
       const c = st.counts[i];
-      h += '<tr><td>' + lbl + '</td><td>' + c['小学校'] + '</td><td>' + c['保育園'] + '</td><td>' +
-        c['幼稚園'] + '</td><td>' + c['認定こども園'] + '</td><td>' + c['小規模保育'] + '</td></tr>';
+      const ps = t => psKnown ? c[t] : '—';
+      h += '<tr><td>' + lbl + '</td><td>' + c['小学校'] + '</td><td>' + ps('保育園') + '</td><td>' +
+        ps('幼稚園') + '</td><td>' + ps('認定こども園') + '</td><td>' + ps('小規模保育') + '</td></tr>';
     });
     h += '</table>';
     h += '<div class="pp-kchips">';
